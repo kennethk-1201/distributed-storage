@@ -5,14 +5,9 @@ import (
 	"log"
 )
 
-func OnPeer(peer p2p.Peer) error {
-	peer.Close()
-	return nil
-}
-
-func main() {
+func makeServer(listenAddr string, nodes ...string) *FileServer {
 	tcpTransportOpts := p2p.TCPTransportOpts{
-		ListenAddr:    ":3000",
+		ListenAddr:    listenAddr,
 		HandshakeFunc: p2p.NOPHandshakeFunc,
 		Decoder:       p2p.DefaultDecoder{},
 		// TODO： onPeer Func
@@ -21,19 +16,22 @@ func main() {
 	tcpTransport := p2p.NewTCPTransport(tcpTransportOpts)
 
 	fileServerOpts := FileServerOpts{
-		StorageRoot:       "3000_network",
+		StorageRoot:       listenAddr + "_network",
 		PathTransformFunc: CASPathTransformFunc,
 		Transport:         tcpTransport,
-		BootstrapNodes:    []string{":4000"},
+		BootstrapNodes:    nodes,
 	}
-	s := NewFileServer(fileServerOpts)
-	/*
-		go func() {
-			time.Sleep(time.Second * 3)
-			s.Stop()
-		}()
-	*/
-	if err := s.Start(); err != nil {
-		log.Fatal(err)
-	}
+
+	return NewFileServer(fileServerOpts)
+}
+
+func main() {
+	s1 := makeServer(":3000", "")
+	s2 := makeServer(":4000", ":3000")
+
+	go func() {
+		log.Fatal(s1.Start())
+	}()
+
+	s2.Start()
 }

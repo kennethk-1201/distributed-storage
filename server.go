@@ -51,6 +51,10 @@ func (s *FileServer) loop() {
 
 func (s *FileServer) bootstrapNetwork() error {
 	for _, addr := range s.BootstrapNodes {
+		if len(addr) == 0 {
+			continue
+		}
+
 		go func(addr string) {
 			if err := s.Transport.Dial(addr); err != nil {
 				log.Println("dial error: ", err)
