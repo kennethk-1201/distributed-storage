@@ -1,10 +1,8 @@
 package main
 
 import (
-	"fmt"
-	"log"
-
 	"github.com/kennethk-1201/distributed-storage/p2p"
+	"log"
 )
 
 func OnPeer(peer p2p.Peer) error {
@@ -13,24 +11,29 @@ func OnPeer(peer p2p.Peer) error {
 }
 
 func main() {
-	tcpOpts := p2p.TCPTransportOpts{
+	tcpTransportOpts := p2p.TCPTransportOpts{
 		ListenAddr:    ":3000",
 		HandshakeFunc: p2p.NOPHandshakeFunc,
 		Decoder:       p2p.DefaultDecoder{},
-		OnPeer:        OnPeer,
+		// TODO： onPeer Func
 	}
-	tr := p2p.NewTCPTransport(tcpOpts)
 
-	go func() {
-		for {
-			msg := <-tr.Consume()
-			fmt.Printf("message: %+v\n", msg)
-		}
-	}()
+	tcpTransport := p2p.NewTCPTransport(tcpTransportOpts)
 
-	if err := tr.ListenAndAccept(); err != nil {
+	fileServerOpts := FileServerOpts{
+		StorageRoot:       "3000_network",
+		PathTransformFunc: CASPathTransformFunc,
+		Transport:         tcpTransport,
+		BootstrapNodes:    []string{":4000"},
+	}
+	s := NewFileServer(fileServerOpts)
+	/*
+		go func() {
+			time.Sleep(time.Second * 3)
+			s.Stop()
+		}()
+	*/
+	if err := s.Start(); err != nil {
 		log.Fatal(err)
 	}
-
-	select {}
 }
