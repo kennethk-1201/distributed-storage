@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"github.com/kennethk-1201/distributed-storage/p2p"
 	"log"
+	"time"
 )
 
 func makeServer(listenAddr string, nodes ...string) *FileServer {
@@ -10,7 +13,6 @@ func makeServer(listenAddr string, nodes ...string) *FileServer {
 		ListenAddr:    listenAddr,
 		HandshakeFunc: p2p.NOPHandshakeFunc,
 		Decoder:       p2p.DefaultDecoder{},
-		// TODO： onPeer Func
 	}
 
 	tcpTransport := p2p.NewTCPTransport(tcpTransportOpts)
@@ -22,7 +24,10 @@ func makeServer(listenAddr string, nodes ...string) *FileServer {
 		BootstrapNodes:    nodes,
 	}
 
-	return NewFileServer(fileServerOpts)
+	s := NewFileServer(fileServerOpts)
+	tcpTransport.OnPeer = s.OnPeer
+
+	return s
 }
 
 func main() {
@@ -33,5 +38,27 @@ func main() {
 		log.Fatal(s1.Start())
 	}()
 
-	s2.Start()
+	time.Sleep(1 * time.Second)
+	go s2.Start()
+	time.Sleep(1 * time.Second)
+
+	for i := 0; i < 10; i++ {
+		data := bytes.NewReader([]byte("my big data file here!"))
+		s2.Store(fmt.Sprintf("myprivatedata_%d", i), data)
+	}
+
+	/*
+		r, err := s2.Get("myprivatedata")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		b, err := ioutil.ReadAll(r)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Println(string(b))
+	*/
+	select {}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 )
 
 /*
@@ -17,22 +18,28 @@ at the bottom.
 */
 
 type TCPPeer struct {
-	conn net.Conn
+	// the underlying connection of the peer, which is a TCP connection.
+	net.Conn
 
 	// if we dial and retrieve a conn => outbound == true
 	// if we accept and  retrieve a conn => outbound == false
 	outbound bool
+
+	Wg *sync.WaitGroup
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
-		conn:     conn,
+		Conn:     conn,
 		outbound: outbound,
+		Wg:       new(sync.WaitGroup),
 	}
 }
 
-func (p *TCPPeer) Close() error {
-	return p.conn.Close()
+func (p *TCPPeer) Send(b []byte) error {
+	_, err := p.Conn.Write(b)
+
+	return err
 }
 
 type TCPTransportOpts struct {
@@ -51,8 +58,12 @@ type TCPTransport struct {
 func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
 	return &TCPTransport{
 		TCPTransportOpts: opts,
-		rpcch:            make(chan RPC),
+		rpcch:            make(chan RPC, 1024),
 	}
+}
+
+func (t *TCPTransport) Addr() string {
+	return t.ListenAddr
 }
 
 // Consume implements the Transport interface, which returns a read-only channel
@@ -107,8 +118,6 @@ func (t *TCPTransport) startAcceptLoop() {
 			fmt.Printf("TCP accept error: %s\n", err)
 		}
 
-		fmt.Printf("new incoming connection %+v\n", conn)
-
 		go t.handleConn(conn, false)
 	}
 }
@@ -136,14 +145,23 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 	}
 
 	// Read Loop
-	rpc := RPC{}
 	for {
+		rpc := RPC{}
 		err := t.Decoder.Decode(conn, &rpc)
 		if err != nil {
 			return
 		}
 
-		rpc.From = conn.RemoteAddr()
+		rpc.From = conn.RemoteAddr().String()
+
+		if rpc.Stream {
+			peer.Wg.Add(1)
+			fmt.Printf("[%s] incoming stream, waiting...\n", conn.RemoteAddr())
+			peer.Wg.Wait()
+			fmt.Printf("[%s] stream closed, resuming read loop\n", conn.RemoteAddr())
+			continue
+		}
+
 		t.rpcch <- rpc
 	}
 }
